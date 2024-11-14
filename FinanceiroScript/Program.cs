@@ -16,15 +16,16 @@ namespace FinanceiroScript
                     services.AddScoped<INFSeServico, NFSeServico>();
                     services.AddScoped<INFSeVerificarValidadeNotasServico, NFSeVerificarValidadeNotasServico>();
                     services.AddScoped<IDiretorioHelper, DiretorioHelper>();
-                    services.AddScoped<LogHelper>();
+                    services.AddScoped<LogHelper>(); 
                 })
                 .Build();
 
             var directoryHelper = host.Services.GetRequiredService<IDiretorioHelper>();
-            var logHelper = host.Services.GetRequiredService<LogHelper>();
-            logHelper.LogMessage("Program iniciado.");
+            var logHelper = host.Services.GetRequiredService<LogHelper>(); 
+            logHelper.LogMessage("Program iniciado."); 
+
             var processorService = host.Services.GetRequiredService<INFSeVerificarValidadeNotasServico>();
-            processorService.VerificarValidadeNotasFiscais();
+            processorService.VerificarValidadeNotasFiscais(); 
         }
     }
 }

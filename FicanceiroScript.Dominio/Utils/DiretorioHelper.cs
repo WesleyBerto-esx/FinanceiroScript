@@ -8,7 +8,7 @@ public class DiretorioHelper : IDiretorioHelper
 
     public DiretorioHelper()
     {
-        _appRootPath = @"C:\Users\W111\Downloads\TesteAutomateFinance\";
+        _appRootPath = @"C:\Users\w14\Desktop\";
         _dateTimeString = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         _resultDirectory = Path.Combine(_appRootPath, "Resultados", $"Resultado-{_dateTimeString}");
 

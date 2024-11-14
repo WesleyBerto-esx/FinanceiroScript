@@ -6,41 +6,46 @@ using FinanceiroScript.Dominio;
 
 public class ExcelHelper
 {
-    public static bool IsNFSeValid(NFSe nfseData, string excelFilePath)
+    public static bool ValidarNFSe(NFSe dadosNfse, string caminhoArquivoExcel)
     {
-        if (nfseData == null) return false;
-        if (string.IsNullOrEmpty(excelFilePath)) return false;
+        if (dadosNfse == null) return false;
+        if (string.IsNullOrEmpty(caminhoArquivoExcel)) return false;
 
         try
         {
-            if (string.IsNullOrEmpty(nfseData.Prestador.Cnpj) || string.IsNullOrEmpty(nfseData.DataCompetencia))
+            if (string.IsNullOrEmpty(dadosNfse.Prestador.Cnpj) || string.IsNullOrEmpty(dadosNfse.DataCompetencia))
             {
                 throw new ArgumentException("CNPJ e Competência são necessários para a busca.");
             }
 
-            IWorkbook workbook = LoadExcelFile(excelFilePath);
+            IWorkbook planilha = CarregarArquivoExcel(caminhoArquivoExcel);
 
-            var sheet = workbook.GetSheetAt(0) ?? throw new Exception("Não foi possível acessar a planilha no arquivo Excel.");
+            var aba = planilha.GetSheetAt(0) ?? throw new Exception("Não foi possível acessar a planilha no arquivo Excel.");
 
-            int cnpjColumnIndex = GetColumnIndexByTitle(sheet, "CNPJ");
-            int competenciaColumnIndex = GetColumnIndexByTitle(sheet, "Competência");
-            int salarioColumnIndex = GetColumnIndexByTitle(sheet, "Salário");
+            int indiceColunaCnpj = ObterIndiceColunaPorTitulo(aba, "CNPJ");
+            int indiceColunaCompetencia = ObterIndiceColunaPorTitulo(aba, "Competência");
+            int indiceColunaSalario = ObterIndiceColunaPorTitulo(aba, "Salário");
+            int indiceColunaRazaoSocial = ObterIndiceColunaPorTitulo(aba, "Razão Social");
 
-            for (int rowIndex = 1; rowIndex <= sheet.LastRowNum; rowIndex++) // Começar da segunda linha (index 1)
+            for (int indiceLinha = 1; indiceLinha <= aba.LastRowNum; indiceLinha++)
             {
-                var row = sheet.GetRow(rowIndex);
-                if (row == null) continue;
+                var linha = aba.GetRow(indiceLinha);
+                if (linha == null) continue;
 
-                string? cnpj = row.GetCell(cnpjColumnIndex)?.ToString()?.Trim();
-                string? competencia = row.GetCell(competenciaColumnIndex)?.ToString()?.Trim();
-                string? salario = FormatSalary(row.GetCell(salarioColumnIndex)?.ToString());
+                string? cnpj = linha.GetCell(indiceColunaCnpj)?.ToString()?.Trim();
+                string? competencia = linha.GetCell(indiceColunaCompetencia)?.ToString()?.Trim();
+                string? salario = FormatarSalario(linha.GetCell(indiceColunaSalario)?.ToString());
+                string? razaoSocial = linha.GetCell(indiceColunaRazaoSocial)?.ToString()?.Trim();
 
-                if (IsMatch(cnpj: cnpj, competencia: competencia, salario: salario, nfseData: nfseData))
+                if (!string.IsNullOrEmpty(cnpj) && !string.IsNullOrEmpty(competencia) &&
+                    !string.IsNullOrEmpty(salario) && !string.IsNullOrEmpty(razaoSocial) &&
+                    VerificarCorrespondencia(cnpj, competencia, salario, razaoSocial, dadosNfse))
                 {
                     Console.WriteLine("Tudo certo. Todos os dados necessários foram validados.");
                     return true;
                 }
             }
+
             Console.WriteLine("Dados não encontrados no Excel para o CNPJ e Competência especificados.");
             return false;
         }
@@ -51,61 +56,104 @@ public class ExcelHelper
         }
     }
 
-    private static IWorkbook LoadExcelFile(string excelFilePath)
+    private static IWorkbook CarregarArquivoExcel(string caminhoArquivoExcel)
     {
-        using (var fileStream = new FileStream(excelFilePath, FileMode.Open, FileAccess.Read))
+        using (var fluxoArquivo = new FileStream(caminhoArquivoExcel, FileMode.Open, FileAccess.Read))
         {
-            return excelFilePath.EndsWith(".xls") ? (IWorkbook)new HSSFWorkbook(fileStream) : new XSSFWorkbook(fileStream);
+            return caminhoArquivoExcel.EndsWith(".xls") ? (IWorkbook)new HSSFWorkbook(fluxoArquivo) : new XSSFWorkbook(fluxoArquivo);
         }
     }
 
-    private static bool IsMatch(string cnpj, string competencia, string salario, NFSe nfseData)
+    private static bool VerificarCorrespondencia(string cnpj, string competencia, string salario, string razaoSocial, NFSe dadosNfse)
     {
-        string? formattedServiceValue = FormatSalary(nfseData.ValorServico);
-        string? formattedCompetencyDate = FormatCompetencyDate(nfseData.DataCompetencia);
+        string? valorServicoFormatado = FormatarSalario(dadosNfse.ValorServico);
+        string? dataCompetenciaFormatada = FormatarDataCompetencia(dadosNfse.DataCompetencia);
 
-        Console.WriteLine($"CNPJ no Excel: {cnpj}, CNPJ Procurado: {nfseData.Prestador.Cnpj}");
-        Console.WriteLine($"Competência no Excel: {competencia}, Competência Procurada: {formattedCompetencyDate}");
-        Console.WriteLine($"Salário no Excel: {salario}, Salário Procurado: {formattedServiceValue}");
+        cnpj = cnpj?.Trim();
+        competencia = competencia?.Trim();
+        salario = salario?.Trim();
+        razaoSocial = razaoSocial?.Trim();
+        valorServicoFormatado = valorServicoFormatado?.Trim();
+        dataCompetenciaFormatada = dataCompetenciaFormatada?.Trim();
 
-        return cnpj?.Trim() == nfseData.Prestador.Cnpj.Trim() &&
-               competencia?.Trim().Equals(formattedCompetencyDate, StringComparison.OrdinalIgnoreCase) == true &&
-               salario == formattedServiceValue;
+        Console.WriteLine($"CNPJ no Excel: {cnpj}, CNPJ Procurado: {dadosNfse.Prestador.Cnpj.Trim()}");
+        Console.WriteLine($"Competência no Excel: {competencia}, Competência Procurada: {dataCompetenciaFormatada}");
+        Console.WriteLine($"Salário no Excel: {salario}, Salário Procurado: {valorServicoFormatado}");
+        Console.WriteLine($"Razão Social no Excel: {razaoSocial}, Razão Social Procurada: {dadosNfse.Prestador.RazaoSocial.Trim()}");
+
+        bool correspondeCnpj = cnpj == dadosNfse.Prestador.Cnpj.Trim();
+        bool correspondeCompetencia = competencia?.Equals(dataCompetenciaFormatada, StringComparison.OrdinalIgnoreCase) ?? false;
+        bool correspondeSalario = salario == valorServicoFormatado;
+        bool correspondeRazaoSocial = razaoSocial == dadosNfse.Prestador.RazaoSocial.Trim();
+
+        return correspondeCnpj && correspondeCompetencia && correspondeSalario && correspondeRazaoSocial;
     }
 
-    private static int GetColumnIndexByTitle(ISheet sheet, string title)
+    private static int ObterIndiceColunaPorTitulo(ISheet aba, string titulo)
     {
-        IRow headerRow = sheet.GetRow(0);
-        if (headerRow == null)
+        IRow linhaCabecalho = aba.GetRow(0);
+        if (linhaCabecalho == null)
         {
             throw new Exception("Cabeçalho não encontrado na planilha.");
         }
 
-        for (int i = 0; i < headerRow.LastCellNum; i++)
+        string tituloNormalizado = NormalizarString(titulo);
+        for (int i = 0; i < linhaCabecalho.LastCellNum; i++)
         {
-            var cell = headerRow.GetCell(i);
-            if (cell != null && cell.StringCellValue.Equals(title, StringComparison.OrdinalIgnoreCase))
+            var celula = linhaCabecalho.GetCell(i);
+            if (celula != null)
             {
-                return i;
+                string valorCelula = NormalizarString(celula.StringCellValue);
+                if (valorCelula.Equals(tituloNormalizado, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
             }
         }
 
-        throw new Exception($"Título '{title}' não encontrado na planilha.");
+        throw new Exception($"Título '{titulo}' não encontrado na planilha.");
     }
 
-    private static string FormatCompetencyDate(string competencyDate)
+    private static string NormalizarString(string entrada)
     {
-        return DateTime.ParseExact(competencyDate, "dd/MM/yyyy", CultureInfo.InvariantCulture)
-                        .ToString("dd-MMM-yyyy", new CultureInfo("en-US"));
+        if (entrada == null) return string.Empty;
+
+        return new string(entrada
+            .Where(c => !char.IsWhiteSpace(c) && !char.IsControl(c))
+            .ToArray());
     }
 
-    private static string FormatSalary(string salary)
+    private static string FormatarDataCompetencia(string dataCompetencia)
     {
-        if (decimal.TryParse(salary, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal parsedSalary))
+        try
         {
-            return parsedSalary.ToString("N2", new CultureInfo("pt-BR")); // Exemplo: "2.500,00"
+            return DateTime.ParseExact(dataCompetencia, "dd/MM/yyyy", CultureInfo.InvariantCulture)
+                            .ToString("dd-MMM-yyyy", new CultureInfo("en-US"));
         }
-        Console.WriteLine("Erro ao converter o valor do salário para decimal.");
-        return salary;
+        catch (FormatException ex)
+        {
+            Console.WriteLine($"Erro ao formatar a data de competência: {ex.Message}");
+            return string.Empty;
+        }
+    }
+
+    private static string FormatarSalario(string salario)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(salario) || salario.StartsWith("base.folha"))
+            {
+                return string.Empty;
+            }
+            if (decimal.TryParse(salario, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal salarioParseado))
+            {
+                return salarioParseado.ToString("N2", new CultureInfo("pt-BR"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao converter o valor do salário para decimal: {ex.Message}");
+        }
+        return salario;
     }
 }

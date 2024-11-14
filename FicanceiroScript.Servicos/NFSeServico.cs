@@ -18,95 +18,95 @@ namespace FinanceiroScript.Servicos
             _logger = logger;
         }
 
-        public string[]? ObterTodasNFSes(string nfsePDFsPath)
+        public string[]? ObterTodasNFSes(string caminhoPDFsNFSe)
         {
             _logger.LogInformation("Função listar todas as NFSes em PDF");
 
-            if (!Directory.Exists(nfsePDFsPath))
+            if (!Directory.Exists(caminhoPDFsNFSe))
             {
-                _logger.LogError($"O diretório '{nfsePDFsPath}' não foi encontrado.");
+                _logger.LogError($"O diretório '{caminhoPDFsNFSe}' não foi encontrado.");
                 return null;
             }
 
-            string[] pdfFiles = Directory.GetFiles(nfsePDFsPath, "*.pdf");
+            string[] arquivosPdf = Directory.GetFiles(caminhoPDFsNFSe, "*.pdf");
 
-            if (pdfFiles.Length == 0)
+            if (arquivosPdf.Length == 0)
             {
-                _logger.LogWarning($"Nenhum arquivo PDF encontrado no diretório '{nfsePDFsPath}'.");
+                _logger.LogWarning($"Nenhum arquivo PDF encontrado no diretório '{caminhoPDFsNFSe}'.");
                 return null;
             }
 
-            return pdfFiles;
+            return arquivosPdf;
         }
 
         public NFSe ExtrairDadosNFSeDoPdf(Stream pdfStream)
         {
-            var nfseData = new NFSe();
-            string pdfText = ObterTextoDoPdfStream(pdfStream);
+            var dadosNfse = new NFSe();
+            string textoPdf = ObterTextoDoPdfStream(pdfStream);
 
-            ExtractNFSeFields(pdfText, nfseData);
-            ExtractPessoaJuridicaData(pdfText, nfseData.Prestador, "Prestador");
-            ExtractPessoaJuridicaData(pdfText, nfseData.Tomador, "Tomador");
+            ExtrairCamposNFSe(textoPdf, dadosNfse);
+            ExtrairDadosPessoaJuridica(textoPdf, dadosNfse.Prestador, "Prestador");
+            ExtrairDadosPessoaJuridica(textoPdf, dadosNfse.Tomador, "Tomador");
 
-            return nfseData;
+            return dadosNfse;
         }
 
-        private void ExtractNFSeFields(string pdfText, NFSe nfseData)
+        private void ExtrairCamposNFSe(string textoPdf, NFSe dadosNfse)
         {
-            var fieldKeys = new List<string>
+            var chavesCampos = new List<string>
             {
                 "ChaveAcesso", "Numero", "DataCompetencia", "DataEmissao",
                 "CodigoServico", "DescricaoServico", "StatusImpostoMunicipal",
                 "IncidenciaMunicipal", "ValorServico", "ValorLiquidoNotaFiscal"
             };
 
-            foreach (var fieldKey in fieldKeys)
+            foreach (var chaveCampo in chavesCampos)
             {
-                if (_nfseFieldMappings.TryGetValue(fieldKey, out var fieldConfig))
+                if (_mapeamentoCamposNfse.TryGetValue(chaveCampo, out var configuracaoCampo))
                 {
-                    string pattern = fieldConfig["pattern"];
-                    string label = fieldConfig["label"];
+                    string padrao = configuracaoCampo["padrao"];
+                    string rotulo = configuracaoCampo["rotulo"];
 
-                    var fieldValue = ExtractFieldFromText(pdfText, "", new List<string> { label }, pattern);
-                    nfseData.GetType().GetProperty(fieldKey)?.SetValue(nfseData, fieldValue);
+                    var valorCampo = ExtrairCampoDoTexto(textoPdf, "", new List<string> { rotulo }, padrao);
+                    dadosNfse.GetType().GetProperty(chaveCampo)?.SetValue(dadosNfse, valorCampo);
                 }
             }
         }
 
-        private void ExtractPessoaJuridicaData(string pdfText, PessoaJuridica pessoa, string entityPrefix)
+        private void ExtrairDadosPessoaJuridica(string textoPdf, PessoaJuridica pessoa, string prefixoEntidade)
         {
-            var fieldKeys = new List<string> { "Cnpj", "RazaoSocial", "Email", "Endereco", "Municipio", "Cep" };
+            var chavesCampos = new List<string> { "Cnpj", "RazaoSocial", "Email", "Endereco", "Municipio", "Cep" };
 
-            foreach (var fieldKey in fieldKeys)
+            foreach (var chaveCampo in chavesCampos)
             {
-                if (_nfseFieldMappings.TryGetValue(fieldKey, out var fieldConfig))
+                if (_mapeamentoCamposNfse.TryGetValue(chaveCampo, out var configuracaoCampo))
                 {
-                    string pattern = fieldConfig["pattern"];
-                    string label = fieldConfig["label"];
-                    var fieldValue = ExtractFieldFromText(pdfText, entityPrefix, new List<string> { label }, pattern);
-                    pessoa.GetType().GetProperty(fieldKey)?.SetValue(pessoa, fieldValue);
+                    string padrao = configuracaoCampo["padrao"];
+                    string rotulo = configuracaoCampo["rotulo"];
+                    var valorCampo = ExtrairCampoDoTexto(textoPdf, prefixoEntidade, new List<string> { rotulo }, padrao);
+                    pessoa.GetType().GetProperty(chaveCampo)?.SetValue(pessoa, valorCampo);
                 }
             }
         }
 
-        private string? ExtractFieldFromText(string text, string entityPrefix, List<string> labels, string pattern)
+        private string? ExtrairCampoDoTexto(string texto, string prefixoEntidade, List<string> rotulos, string padrao)
         {
-            if (!string.IsNullOrEmpty(entityPrefix))
+            if (!string.IsNullOrEmpty(prefixoEntidade))
             {
-                entityPrefix = $@"(?:{entityPrefix}[\s\S]*?)";
+                prefixoEntidade = $@"(?:{prefixoEntidade}[\s\S]*?)";
             }
 
-            foreach (var label in labels)
+            foreach (var rotulo in rotulos)
             {
-                var fullPattern = $@"(?i){entityPrefix}(?:{label}\s*[:\-]?\s*)[\s\S]*?{pattern}";
+                var padraoCompleto = $@"(?i){prefixoEntidade}(?:{rotulo}\s*[:\-]?\s*)[\s\S]*?{padrao}";
 
-                Regex regex = new Regex(fullPattern, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                Regex regex = new Regex(padraoCompleto, RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
-                var match = regex.Match(text);
+                var correspondencia = regex.Match(texto);
 
-                if (match.Success)
+                if (correspondencia.Success)
                 {
-                    return match.Groups[1].Value.Trim();
+                    return correspondencia.Groups[1].Value.Trim();
                 }
             }
 
@@ -115,143 +115,148 @@ namespace FinanceiroScript.Servicos
 
         private string ObterTextoDoPdfStream(Stream pdfStream)
         {
-            var result = new StringBuilder();
-            using var pdfReader = new PdfReader(pdfStream);
-            using var pdfDoc = new PdfDocument(pdfReader);
-            for (int page = 1; page <= pdfDoc.GetNumberOfPages(); page++)
+            var resultado = new StringBuilder();
+            using var leitorPdf = new PdfReader(pdfStream);
+            using var docPdf = new PdfDocument(leitorPdf);
+            for (int pagina = 1; pagina <= docPdf.GetNumberOfPages(); pagina++)
             {
-                var strategy = new SimpleTextExtractionStrategy();
-                string content = PdfTextExtractor.GetTextFromPage(pdfDoc.GetPage(page), strategy);
-                result.Append(content);
+                var estrategia = new SimpleTextExtractionStrategy();
+                string conteudo = PdfTextExtractor.GetTextFromPage(docPdf.GetPage(pagina), estrategia);
+                resultado.Append(conteudo);
             }
-            return result.ToString();
+            return resultado.ToString();
         }
 
-        public string RenomearEMoverNFSePdf(string filePath, NFSe nfse, string destinationDir)
+        public string RenomearEMoverNFSePdf(string caminhoArquivo, NFSe nfse, string diretórioDestino)
         {
-            string newFileName = $"error_" + Path.GetFileName(filePath);
+            string novoNomeArquivo = $"erro_" + Path.GetFileName(caminhoArquivo);
 
             if (!string.IsNullOrEmpty(nfse?.Numero) && !string.IsNullOrEmpty(nfse?.Prestador?.RazaoSocial))
             {
-                string formattedNumero = nfse.Numero.PadLeft(4, '0');
+                string numeroFormatado = nfse.Numero.PadLeft(4, '0');
 
-                string formattedRazaoSocial = Regex.Replace(nfse.Prestador.RazaoSocial, @"[^a-zA-Z\s]", "");
-                formattedRazaoSocial = Regex.Replace(formattedRazaoSocial.Trim().ToUpper(), @"\s+", "_");
+                string razaoSocialFormatada = Regex.Replace(nfse.Prestador.RazaoSocial, @"[^a-zA-Z\s]", "");
+                razaoSocialFormatada = Regex.Replace(razaoSocialFormatada.Trim().ToUpper(), @"\s+", "_");
 
-                newFileName = $"{formattedNumero}_{formattedRazaoSocial}.pdf";
+                novoNomeArquivo = $"{numeroFormatado}_{razaoSocialFormatada}.pdf";
             }
             else
             {
-                Console.WriteLine("Warning: 'Numero' ou 'RazaoSocial' é nulo ou vazio. Usando o nome original do arquivo.");
+                Console.WriteLine("Aviso: 'Numero' ou 'RazaoSocial' é nulo ou vazio. Usando o nome original do arquivo.");
             }
 
-            string copyFilePath = Path.Combine(Path.GetDirectoryName(filePath), newFileName);
-            File.Copy(filePath, copyFilePath, overwrite: true);
+            string caminhoArquivoCopia = Path.Combine(Path.GetDirectoryName(caminhoArquivo), novoNomeArquivo);
+            File.Copy(caminhoArquivo, caminhoArquivoCopia, overwrite: true);
 
-            string newFilePath = Path.Combine(destinationDir, Path.GetFileName(copyFilePath));
-            File.Move(copyFilePath, newFilePath);
-            return newFilePath;
+            string novoCaminhoArquivo = Path.Combine(diretórioDestino, Path.GetFileName(caminhoArquivoCopia));
+            File.Move(caminhoArquivoCopia, novoCaminhoArquivo);
+            return novoCaminhoArquivo;
         }
 
-        private readonly Dictionary<string, Dictionary<string, string>> _nfseFieldMappings = new()
+        private readonly Dictionary<string, Dictionary<string, string>> _mapeamentoCamposNfse = new()
         {
             { "ChaveAcesso", new Dictionary<string, string>
                 {
-                    { "label", "Chave de Acesso da NFS-e" },
-                    { "pattern", @"([\d]+)" }
+                    { "rotulo", "Chave de Acesso da NFS-e" },
+                    { "padrao", @"([\d]+)" }
+                }
+            },
+            { "Razão Social", new Dictionary<string, string>
+                {
+                    { "rotulo", "Razão Social da NFS-e" },
+                    { "padrao", @"([\d]+)" }
                 }
             },
             { "Numero", new Dictionary<string, string>
                 {
-                    { "label", "Número da NFS-e" },
-                    { "pattern", @"(\d+)" }
+                    { "rotulo", "Número da NFS-e" },
+                    { "padrao", @"(\d+)" }
                 }
             },
             { "DataCompetencia", new Dictionary<string, string>
                 {
-                    { "label", "Competência da NFS-e" },
-                    { "pattern", @"([\d/]+)" }
+                    { "rotulo", "Competência da NFS-e" },
+                    { "padrao", @"([\d/]+)" }
                 }
             },
             { "DataEmissao", new Dictionary<string, string>
                 {
-                    { "label", "Data e Hora da emissão" },
-                    { "pattern", @"([\d/]+ \d{2}:\d{2}:\d{2})" }
+                    { "rotulo", "Data e Hora da emissão" },
+                    { "padrao", @"([\d/]+ \d{2}:\d{2}:\d{2})" }
                 }
             },
             { "CodigoServico", new Dictionary<string, string>
                 {
-                    { "label", "Código de Tributação Nacional" },
-                    { "pattern", @"([\d.]+)" }
+                    { "rotulo", "Código de Tributação Nacional" },
+                    { "padrao", @"([\d.]+)" }
                 }
             },
             { "DescricaoServico", new Dictionary<string, string>
                 {
-                    { "label", "Descrição do Serviço" },
-                    { "pattern", @"([^\n]+)" }
+                    { "rotulo", "Descrição do Serviço" },
+                    { "padrao", @"([^\n]+)" }
                 }
             },
             { "StatusImpostoMunicipal", new Dictionary<string, string>
                 {
-                    { "label", "Tributação do ISSQN" },
-                    { "pattern", @"([^\n]+)" }
+                    { "rotulo", "Tributação do ISSQN" },
+                    { "padrao", @"([^\n]+)" }
                 }
             },
             { "IncidenciaMunicipal", new Dictionary<string, string>
                 {
-                    { "label", "Município de Incidência do ISSQN" },
-                    { "pattern", @"([^\n]+)" }
+                    { "rotulo", "Município de Incidência do ISSQN" },
+                    { "padrao", @"([^\n]+)" }
                 }
             },
             { "ValorServico", new Dictionary<string, string>
                 {
-                    { "label", "Valor do Serviço" },
-                    { "pattern", @"R\$\s*([\d,\.]+)" }
+                    { "rotulo", "Valor do Serviço" },
+                    { "padrao", @"R\$\s*([\d,\.]+)" }
                 }
             },
             { "ValorLiquidoNotaFiscal", new Dictionary<string, string>
                 {
-                    { "label", "Valor Líquido da NFS-e" },
-                    { "pattern", @"R\$\s*([\d.,]+)" }
+                    { "rotulo", "Valor Líquido da NFS-e" },
+                    { "padrao", @"R\$\s*([\d.,]+)" }
                 }
             },
             { "Cnpj", new Dictionary<string, string>
                 {
-                    { "label", @"CNPJ" },
-                    { "pattern", @"(\d{2}\.?(\d{3}\.?){2}([/])?\d{4}-?\d{2})" }
+                    { "rotulo", @"CNPJ" },
+                    { "padrao", @"(\d{2}\.?(\d{3}\.?){2}([/])?\d{4}-?\d{2})" }
                 }
             },
             { "RazaoSocial", new Dictionary<string, string>
                 {
-                    { "label", @"(?:Nome\s*)(?:Empresarial|Raz[aã]o\s*Social)" },
-                    { "pattern", @"(.+?)\n" }
+                    { "rotulo", @"(?:Nome\s*?:)" },
+                    { "padrao", @"(.+)" }
                 }
             },
             { "Email", new Dictionary<string, string>
                 {
-                    { "label", "E[-]?mail" },
-                    { "pattern", @"\s*([^\n]*)" }
+                    { "rotulo", @"E-mail" },
+                    { "padrao", @"(?:[\w\.-]+@[\w\.-]+)" }
                 }
             },
             { "Endereco", new Dictionary<string, string>
                 {
-                    { "label", "Endereço" },
-                    { "pattern", @"([^\n]+)" }
+                    { "rotulo", "Endereço" },
+                    { "padrao", @"([^\n]+)" }
                 }
             },
             { "Municipio", new Dictionary<string, string>
                 {
-                    { "label", "Município" },
-                    { "pattern", @"([^\n]+)" }
+                    { "rotulo", "Município" },
+                    { "padrao", @"([^\n]+)" }
                 }
             },
             { "Cep", new Dictionary<string, string>
                 {
-                    { "label", "CEP" },
-                    { "pattern", @"([\d-]+)" }
+                    { "rotulo", "CEP" },
+                    { "padrao", @"(\d{5}-?\d{3})" }
                 }
             }
         };
-
     }
 }
